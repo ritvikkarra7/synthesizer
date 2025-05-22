@@ -1,11 +1,11 @@
 #include <math.h>
 #include "WaveFormGenerator.h"
 
-WaveFormGenerator::WaveFormGenerator(int sample_rate, int frequency, float magnitude)
+WaveFormGenerator::WaveFormGenerator(int sample_rate, int frequency, float magnitude) : m_envelope(0.1f, 0.1f, 0.5f, 0.1f)
 {
     m_sample_rate = sample_rate;
     m_frequency = frequency;
-    m_magnitude = magnitude;
+    m_magnitude = 0.1; // currently magnitude is set by default i guess 
     m_wave_type = SINE; // Default wave type
     m_current_position = 0;
 }
@@ -20,7 +20,10 @@ void WaveFormGenerator::getFrames(Frame_t *frames, int number_frames)
         float phase = fmod(m_current_position, M_TWOPI);
         float value = getFromWaveType(phase);
 
-        frames[i].left = frames[i].right = 16384 * m_magnitude * value;
+        float envelopeLevel = m_envelope.getCurrentLevel();
+        float amplitude = 16384 * envelopeLevel * value;
+
+        frames[i].left = frames[i].right = amplitude;
 
         m_current_position += step_per_sample;
         if (m_current_position > M_TWOPI)

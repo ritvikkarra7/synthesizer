@@ -11,6 +11,42 @@ ADSR::ADSR(float attack, float decay, float sustain, float release)
     currentTime = 0.0f;
 }
 
+float ADSR::tick(float deltaTime) {
+    switch (state) {
+        case State::Attack:
+            currentLevel += deltaTime / m_attackTime;
+            if (currentLevel >= 1.0f) {
+                currentLevel = 1.0f;
+                state = State::Decay;
+            }
+            break;
+        case State::Decay:
+            currentLevel -= deltaTime * (1.0f - m_sustainLevel) / m_decayTime;
+            if (currentLevel <= m_sustainLevel) {
+                currentLevel = m_sustainLevel;
+                state = State::Sustain;
+            }
+            break;
+        case State::Sustain:
+            // Hold sustain level
+            break;
+        case State::Release:
+            currentLevel -= deltaTime * m_sustainLevel / m_releaseTime;
+            if (currentLevel <= 0.0f) {
+                currentLevel = 0.0f;
+                state = State::Idle;
+            }
+            break;
+        case State::Idle:
+        default:
+            currentLevel = 0.0f;
+            break;
+    }
+
+    return currentLevel;
+}
+
+
 void ADSR::noteOn() {
     state = State::Attack;
 }
@@ -51,4 +87,8 @@ float ADSR::getSustainLevel() const {
 
 float ADSR::getReleaseTime() const {
     return m_releaseTime;
+}
+
+float ADSR::getCurrentLevel() const {
+    return currentLevel;
 }

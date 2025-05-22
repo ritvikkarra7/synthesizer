@@ -5,7 +5,9 @@
 
 #define BUTTON_PIN 34 // GPIO21 pin connected to button
 // Task handle
+SemaphoreHandle_t sampleSourceMutex;
 TaskHandle_t ButtonTaskHandle = NULL;
+TaskHandle_t ADSRTaskHandle = NULL; 
 
 // i2s pins
 i2s_pin_config_t i2sPins = {
@@ -18,36 +20,51 @@ I2SOutput *output;
 WaveFormGenerator *sampleSource;
 
 void handleButtonPress() {
-
-  sampleSource->setMagnitude(0.5); 
-
+    Serial.println("Button pressed!");
+    if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
+        sampleSource->m_envelope.noteOn();
+        xSemaphoreGive(sampleSourceMutex);
+    }
 }
 
 void buttonTask(void *parameter) {
-  pinMode(BUTTON_PIN, INPUT); // Use INPUT (no internal pull-ups on GPIO34)
+    pinMode(BUTTON_PIN, INPUT);
 
-  while (true) {
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      handleButtonPress();
-      // Simple debounce delay
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+    while (true) {
+        if (digitalRead(BUTTON_PIN) == LOW) {
+            handleButtonPress();
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+            while (digitalRead(BUTTON_PIN) == LOW) {
+                vTaskDelay(10 / portTICK_PERIOD_MS);
+            }
+        }
 
-      // Wait until button is released to prevent retriggering
-      while (digitalRead(BUTTON_PIN) == LOW) {
+        if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
+            sampleSource->m_envelope.noteOff();
+            xSemaphoreGive(sampleSourceMutex);
+        }
+
         vTaskDelay(10 / portTICK_PERIOD_MS);
-      }
     }
+}
 
-    sampleSource->setMagnitude(0.0); // Reset magnitude when button is not pressed
-
-    vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
-  }
+void ADSRTask(void *parameter) {
+    while (true) {
+        float deltaTime = 1.0f / sampleSource->sampleRate();
+        if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
+            sampleSource->m_envelope.tick(deltaTime);
+            xSemaphoreGive(sampleSourceMutex);
+        }
+        vTaskDelay(1 / portTICK_PERIOD_MS);
+    }
 }
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Starting up");
+
+  sampleSourceMutex = xSemaphoreCreateMutex();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
@@ -67,20 +84,27 @@ void setup()
   output->start(I2S_NUM_1, i2sPins, sampleSource);
 
     // Create the button task pinned to core 1
-    xTaskCreatePinnedToCore(
+    xTaskCreate(
       buttonTask,        // Task function
       "Button Task",     // Name of task
       2048,              // Stack size
       NULL,              // Parameters
       1,                 // Priority
-      &ButtonTaskHandle, // Task handle
-      1                  // Core ID (core 1)
+      &ButtonTaskHandle // Task handle
     );
+
+    xTaskCreate(
+      ADSRTask,        // Task function
+      "ADSR Task",     // Name of task
+      2048,              // Stack size
+      NULL,              // Parameters
+      1,                 // Priority
+      &ADSRTaskHandle // Task handle
+    );
+
 }
 
 void loop()
 {
-  // Serial.println("Looping");
-  // delay(1000);
   // nothing to do here - everything is taken care of by tasks
 }

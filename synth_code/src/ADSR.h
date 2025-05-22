@@ -17,9 +17,11 @@ public:
     float getDecayTime() const;
     float getSustainLevel() const;
     float getReleaseTime() const;
+    float getCurrentLevel() const;
 
     // Process the envelope
     float process(float inputSample);
+    float tick(float deltaTime);
 
     // Trigger the envelope
     void noteOn();

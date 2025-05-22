@@ -2,6 +2,7 @@
 #define __wave_form_generator_h__
 
 #include "SampleSource.h"
+#include "ADSR.h"
 
 enum WaveType {
     SINE, 
@@ -16,6 +17,7 @@ private:
     int m_frequency;
     float m_magnitude;
     float m_current_position;
+
     WaveType m_wave_type = SINE; 
 
 public:
@@ -30,6 +32,7 @@ public:
     void setMagnitude(float magnitude);
 
     void setWaveType(WaveType type);
+    ADSR m_envelope; 
 
 };
 
