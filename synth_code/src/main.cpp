@@ -4,9 +4,11 @@
 #include "I2SOutput.h"
 
 #define BUTTON_PIN 34 // GPIO21 pin connected to button
+#define POT_PIN 35 // GPIO35 pin connected to potentiometer
 // Task handle
 TaskHandle_t ButtonTaskHandle = NULL;
 TaskHandle_t ADSRTaskHandle = NULL; 
+TaskHandle_t AttackTaskHandle = NULL;
 
 // i2s pins
 i2s_pin_config_t i2sPins = {
@@ -45,6 +47,17 @@ void buttonTask(void *parameter) {
     vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
   }
 }
+
+void attackTask(void *parameter) {
+
+  while (true) {
+
+    float potValue = analogRead(POT_PIN); // Read the potentiometer value
+    float attackTime = map(potValue, 0, 4095, 0, 1000); // Map to a range (0-1000 ms)
+    sampleSource->m_envelope.setAttackTime(attackTime); // Set attack time in seconds
+    vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
+  }
+} 
 
 // void ADSRTask(void *parameter) {
 //   while (true) {
@@ -95,6 +108,15 @@ void setup()
     //   1,                 // Priority
     //   &ADSRTaskHandle // Task handle
     // );
+
+    xTaskCreate(
+      attackTask,        // Task function
+      "AttackTask",     // Name of task
+      1024,              // Stack size
+      NULL,              // Parameters
+      1,                 // Priority
+      &AttackTaskHandle // Task handle
+    );
 
 }
 

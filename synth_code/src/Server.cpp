@@ -31,7 +31,7 @@ void handleSetWaveform(AsyncWebServerRequest *request) {
 void setupWebServer() {
   // Connect to Wi-Fi
   const char* ssid = "eduroam";
-  const char* password = "Snoopynalamala7511!!";
+  const char* password = "";
 
   WiFi.begin(ssid, password);
   while (WiFi.status() != WL_CONNECTED) {
