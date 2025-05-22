@@ -5,7 +5,6 @@
 
 #define BUTTON_PIN 34 // GPIO21 pin connected to button
 // Task handle
-SemaphoreHandle_t sampleSourceMutex;
 TaskHandle_t ButtonTaskHandle = NULL;
 TaskHandle_t ADSRTaskHandle = NULL; 
 
@@ -20,51 +19,46 @@ I2SOutput *output;
 WaveFormGenerator *sampleSource;
 
 void handleButtonPress() {
-    Serial.println("Button pressed!");
-    if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
-        sampleSource->m_envelope.noteOn();
-        xSemaphoreGive(sampleSourceMutex);
-    }
+
+  Serial.println("Button pressed!");
+  sampleSource->m_envelope.noteOn(); // Trigger the envelope
+
 }
 
 void buttonTask(void *parameter) {
-    pinMode(BUTTON_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT); // Use INPUT (no internal pull-ups on GPIO34)
 
-    while (true) {
-        if (digitalRead(BUTTON_PIN) == LOW) {
-            handleButtonPress();
-            vTaskDelay(10 / portTICK_PERIOD_MS);
-            while (digitalRead(BUTTON_PIN) == LOW) {
-                vTaskDelay(10 / portTICK_PERIOD_MS);
-            }
-        }
+  while (true) {
+    if (digitalRead(BUTTON_PIN) == LOW) {
+      handleButtonPress();
+      // Simple debounce delay
+      vTaskDelay(10 / portTICK_PERIOD_MS);
 
-        if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
-            sampleSource->m_envelope.noteOff();
-            xSemaphoreGive(sampleSourceMutex);
-        }
-
+      // Wait until button is released to prevent retriggering
+      while (digitalRead(BUTTON_PIN) == LOW) {
         vTaskDelay(10 / portTICK_PERIOD_MS);
+      }
     }
+
+    sampleSource->m_envelope.noteOff(); // Reset magnitude when button is not pressed
+
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
+  }
 }
 
-void ADSRTask(void *parameter) {
-    while (true) {
-        float deltaTime = 1.0f / sampleSource->sampleRate();
-        if (xSemaphoreTake(sampleSourceMutex, portMAX_DELAY)) {
-            sampleSource->m_envelope.tick(deltaTime);
-            xSemaphoreGive(sampleSourceMutex);
-        }
-        vTaskDelay(1 / portTICK_PERIOD_MS);
-    }
-}
+// void ADSRTask(void *parameter) {
+//   while (true) {
+//     // Call the tick function of the ADSR envelope
+//     float deltaTime = 1.0f / sampleSource->sampleRate();
+//     sampleSource->m_envelope.tick(deltaTime);
+//     vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
+//   }
+// }
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Starting up");
-
-  sampleSourceMutex = xSemaphoreCreateMutex();
 
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
@@ -93,14 +87,14 @@ void setup()
       &ButtonTaskHandle // Task handle
     );
 
-    xTaskCreate(
-      ADSRTask,        // Task function
-      "ADSR Task",     // Name of task
-      2048,              // Stack size
-      NULL,              // Parameters
-      1,                 // Priority
-      &ADSRTaskHandle // Task handle
-    );
+    // xTaskCreate(
+    //   ADSRTask,        // Task function
+    //   "ADSR Task",     // Name of task
+    //   2048,              // Stack size
+    //   NULL,              // Parameters
+    //   1,                 // Priority
+    //   &ADSRTaskHandle // Task handle
+    // );
 
 }
 

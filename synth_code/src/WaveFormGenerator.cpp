@@ -14,13 +14,14 @@ void WaveFormGenerator::getFrames(Frame_t *frames, int number_frames)
 {
     float full_wave_samples = m_sample_rate / m_frequency;
     float step_per_sample = M_TWOPI / full_wave_samples;
+    float deltaTime = 1.0f / m_sample_rate; // time per sample in seconds
 
     for (int i = 0; i < number_frames; i++)
     {
         float phase = fmod(m_current_position, M_TWOPI);
         float value = getFromWaveType(phase);
 
-        float envelopeLevel = m_envelope.getCurrentLevel();
+        float envelopeLevel = m_envelope.tick(deltaTime);
         float amplitude = 16384 * envelopeLevel * value;
 
         frames[i].left = frames[i].right = amplitude;
