@@ -53,7 +53,7 @@ void attackTask(void *parameter) {
   while (true) {
 
     float potValue = analogRead(POT_PIN); // Read the potentiometer value
-    float attackTime = map(potValue, 0, 4095, 0, 1000); // Map to a range (0-1000 ms)
+    float attackTime = map(potValue, 0, 4095, 0.001, 5); // Map to a range (0-1000 s)
     sampleSource->m_envelope.setAttackTime(attackTime); // Set attack time in seconds
     vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
   }
