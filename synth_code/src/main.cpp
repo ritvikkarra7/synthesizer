@@ -184,7 +184,7 @@ void switchWaveFormTask(void *parameter) {
 
 void screenTask(void *parameter) {
 
-    const int sustainLen = 58;
+  const int sustainLen = 58;
 
   // Previous pixel values for redraw check
   int prevX1 = 0, prevY1 = 240;
@@ -192,7 +192,10 @@ void screenTask(void *parameter) {
   int prevX3 = 0, prevY3 = 240;
   int prevX4 = 0, prevY4 = 240;
 
-  // Default linear values
+  // Previous text values
+  float prevAttack = -1.0, prevDecay = -1.0, prevSustain = -1.0, prevRelease = -1.0;
+
+  // Visual sketch values
   float attackTime   = 0.0;
   float decayTime    = 0.0;
   float sustainLevel = 0.0;
@@ -201,7 +204,7 @@ void screenTask(void *parameter) {
   while (true) {
     int potValue = g_potValue;
 
-    // Simulate ADSR values purely from potentiometer
+    // Visual sketch simulated from potentiometer
     switch (currentParam) {
       case ATTACK:
         attackTime = (float)potValue / 4095.0 * 5.0;
@@ -217,7 +220,7 @@ void screenTask(void *parameter) {
         break;
     }
 
-    // Map to pixel coordinates
+    // Draw ADSR shape from potentiometer preview
     int x1 = (int)(attackTime / 5.0 * 96);             // 0–96
     int x2 = 96 + (int)(decayTime / 5.0 * 96);         // 96–192
     int x3 = x2 + sustainLen;                          // constant sustain length
@@ -228,11 +231,10 @@ void screenTask(void *parameter) {
     int y3 = y2;
     int y4 = 240;
 
-    // Only update screen if needed
     if (x1 != prevX1 || x2 != prevX2 || x3 != prevX3 || x4 != prevX4 ||
         y1 != prevY1 || y2 != prevY2 || y3 != prevY3 || y4 != prevY4) {
 
-      // Clear previous preview
+      // Clear previous preview lines
       tft.drawLine(0, 240, prevX1, prevY1, TFT_BLACK);
       tft.drawLine(prevX1, prevY1, prevX2, prevY2, TFT_BLACK);
       tft.drawLine(prevX2, prevY2, prevX3, prevY3, TFT_BLACK);
@@ -251,9 +253,44 @@ void screenTask(void *parameter) {
       prevX4 = x4; prevY4 = y4;
     }
 
+    // Fetch true values from osc1->m_envelope
+    float a = osc1->m_envelope.getAttackTime();
+    float d = osc1->m_envelope.getDecayTime();
+    float s = osc1->m_envelope.getSustainLevel();
+    float r = osc1->m_envelope.getReleaseTime();
+
+    // Only update display if changed
+    if (a != prevAttack || d != prevDecay || s != prevSustain || r != prevRelease) {
+
+      // Clear previous box area
+      tft.fillRect(260, 10, 60, 60, TFT_BLACK);
+
+      tft.setCursor(265, 15);
+      tft.setTextColor(TFT_WHITE);
+      tft.setTextSize(1);
+      tft.printf("A:%.3fs\n", a);
+
+      tft.setCursor(265, 25);
+      tft.printf("D:%.3fs\n", d);
+
+      tft.setCursor(265, 35);
+      tft.printf("S:%d%%\n", (int)(s * 100));
+
+      tft.setCursor(265, 45);
+      tft.printf("R:%.3f", r);
+
+      // Save previous values
+      prevAttack = a;
+      prevDecay = d;
+      prevSustain = s;
+      prevRelease = r;
+    }
+
     vTaskDelay(20 / portTICK_PERIOD_MS); // ~50 Hz
   }
 }
+
+
 
 
 

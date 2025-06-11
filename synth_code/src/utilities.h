@@ -14,4 +14,7 @@ float mapLog(float value, float inMin, float inMax, float outMin, float outMax) 
 
 int clamp(int val, int minVal, int maxVal) {
   return max(minVal, min(val, maxVal));
+} 
+float round3(float x) {
+  return roundf(x * 1000.0f) / 1000.0f;
 }
