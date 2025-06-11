@@ -7,6 +7,7 @@
 
 // Use hardware SPI
 TFT_eSPI tft = TFT_eSPI();
+volatile int g_potValue = -1; 
 
 #define TRIG_BUTTON 34 // GPIO21 pin connected to button
 #define POT_PIN 35 // GPIO35 pin connected to potentiometer
@@ -102,10 +103,12 @@ void potentiometerTask(void *parameter) {
 
   while (true) {
     int potValue = analogRead(POT_PIN);
+    
 
     // Only act if the pot actually changed
     if (potValue != lastPotValue) { // Threshold to avoid noise
       lastPotValue = potValue;
+      g_potValue = potValue; // Update global variable
 
       switch (currentParam) {
         case ATTACK: {
@@ -181,30 +184,74 @@ void switchWaveFormTask(void *parameter) {
 
 void screenTask(void *parameter) {
 
-  float prevAttackTime = 0; // Previous attack time for line drawing
-  float prevDecayTime = 0; // Previous decay time for line drawing
-  float prevSustainLevel = 0; // Previous sustain level for line drawing
-  float prevReleaseTime = 0; // Previous release time for line drawing
+    const int sustainLen = 58;
+
+  // Previous pixel values for redraw check
+  int prevX1 = 0, prevY1 = 240;
+  int prevX2 = 0, prevY2 = 240;
+  int prevX3 = 0, prevY3 = 240;
+  int prevX4 = 0, prevY4 = 240;
+
+  // Default linear values
+  float attackTime   = 0.0;
+  float decayTime    = 0.0;
+  float sustainLevel = 0.0;
+  float releaseTime  = 0.0;
 
   while (true) {
-    Serial.println("Screen Task Running");
+    int potValue = g_potValue;
 
-    float attackTime = osc1->m_envelope.getAttackTime(); 
-    float decayTime = osc1->m_envelope.getDecayTime();
-    float sustainLevel = osc1->m_envelope.getSustainLevel();
-    float releaseTime = osc1->m_envelope.getReleaseTime();
+    // Simulate ADSR values purely from potentiometer
+    switch (currentParam) {
+      case ATTACK:
+        attackTime = (float)potValue / 4095.0 * 5.0;
+        break;
+      case DECAY:
+        decayTime = (float)potValue / 4095.0 * 5.0;
+        break;
+      case SUSTAIN:
+        sustainLevel = 1.0f - ((float)potValue / 4095.0);  // flip vertical
+        break;
+      case RELEASE:
+        releaseTime = (float)potValue / 4095.0 * 5.0;
+        break;
+    }
 
-    // clear old line 
-    tft.drawLine(0, 240, prevAttackTime, 0, TFT_BLACK); 
-    tft.drawLine(prevAttackTime, 0, prevAttackTime + prevDecayTime, sustainLevel , TFT_BLACK);
-    // draw new line 
-    tft.drawLine(0, 240, attackTime, 0, TFT_GREEN);
-    tft.drawLine(attackTime, 0, attackTime + decayTime, 100, TFT_GREEN); 
+    // Map to pixel coordinates
+    int x1 = (int)(attackTime / 5.0 * 96);             // 0–96
+    int x2 = 96 + (int)(decayTime / 5.0 * 96);         // 96–192
+    int x3 = x2 + sustainLen;                          // constant sustain length
+    int x4 = 251 + (int)(releaseTime / 5.0 * 69);      // 251–320
 
-    prevAttackTime = attackTime; 
-    prevDecayTime = decayTime;
+    int y1 = 0;
+    int y2 = (int)(sustainLevel * 240);
+    int y3 = y2;
+    int y4 = 240;
 
-    vTaskDelay(50 / portTICK_PERIOD_MS);
+    // Only update screen if needed
+    if (x1 != prevX1 || x2 != prevX2 || x3 != prevX3 || x4 != prevX4 ||
+        y1 != prevY1 || y2 != prevY2 || y3 != prevY3 || y4 != prevY4) {
+
+      // Clear previous preview
+      tft.drawLine(0, 240, prevX1, prevY1, TFT_BLACK);
+      tft.drawLine(prevX1, prevY1, prevX2, prevY2, TFT_BLACK);
+      tft.drawLine(prevX2, prevY2, prevX3, prevY3, TFT_BLACK);
+      tft.drawLine(prevX3, prevY3, prevX4, prevY4, TFT_BLACK);
+
+      // Draw updated preview
+      tft.drawLine(0, 240, x1, y1, TFT_GREEN);
+      tft.drawLine(x1, y1, x2, y2, TFT_GREEN);
+      tft.drawLine(x2, y2, x3, y3, TFT_GREEN);
+      tft.drawLine(x3, y3, x4, y4, TFT_GREEN);
+
+      // Save new coordinates
+      prevX1 = x1; prevY1 = y1;
+      prevX2 = x2; prevY2 = y2;
+      prevX3 = x3; prevY3 = y3;
+      prevX4 = x4; prevY4 = y4;
+    }
+
+    vTaskDelay(20 / portTICK_PERIOD_MS); // ~50 Hz
   }
 }
 
