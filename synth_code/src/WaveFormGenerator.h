@@ -7,7 +7,8 @@
 enum WaveType {
     SINE, 
     SQUARE, 
-    TRIANGLE
+    TRIANGLE,
+    SAWTOOTH
 }; 
 
 class WaveFormGenerator : public SampleSource
@@ -32,6 +33,8 @@ public:
     void setMagnitude(float magnitude);
 
     void setWaveType(WaveType type);
+
+    WaveType getWaveType() { return m_wave_type; }
     ADSR m_envelope; 
 
 };

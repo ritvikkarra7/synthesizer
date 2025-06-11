@@ -2,13 +2,32 @@
 #include <SPIFFS.h>
 #include "WaveFormGenerator.h"
 #include "I2SOutput.h"
+#include "utilities.h" 
+#include <TFT_eSPI.h>
 
-#define BUTTON_PIN 34 // GPIO21 pin connected to button
+// Use hardware SPI
+TFT_eSPI tft = TFT_eSPI();
+
+#define TRIG_BUTTON 34 // GPIO21 pin connected to button
 #define POT_PIN 35 // GPIO35 pin connected to potentiometer
+#define SWITCH_PARAM_BUTTON 32 // GPIO32 pin connected to switch parameter button
+#define SWITCH_WAVEFORM_BUTTON 39 // GPIO33 pin connected to switch waveform button
 // Task handle
-TaskHandle_t ButtonTaskHandle = NULL;
-TaskHandle_t ADSRTaskHandle = NULL; 
-TaskHandle_t AttackTaskHandle = NULL;
+
+TaskHandle_t trigTaskHandle = NULL;
+TaskHandle_t potentiometerTaskHandle = NULL;
+TaskHandle_t switchADSRTaskHandle = NULL;
+TaskHandle_t switchWaveformTaskHandle = NULL;
+TaskHandle_t screenTaskHandler = NULL;
+
+enum paramToModify {
+  ATTACK,
+  DECAY,
+  SUSTAIN,
+  RELEASE
+};
+
+int currentParam = ATTACK; // Start with attack parameter
 
 // i2s pins
 i2s_pin_config_t i2sPins = {
@@ -18,62 +37,185 @@ i2s_pin_config_t i2sPins = {
     .data_in_num = -1};
 
 I2SOutput *output;
-WaveFormGenerator *sampleSource;
+WaveFormGenerator *osc1;
 
-void handleButtonPress() {
-
-  Serial.println("Button pressed!");
-  sampleSource->m_envelope.noteOn(); // Trigger the envelope
-
-}
-
-void buttonTask(void *parameter) {
-  pinMode(BUTTON_PIN, INPUT); // Use INPUT (no internal pull-ups on GPIO34)
+void switchADSRTask(void *parameter) {
+  pinMode(SWITCH_PARAM_BUTTON, INPUT); // Use INPUT (no internal pull-ups on GPIO32)
 
   while (true) {
-    if (digitalRead(BUTTON_PIN) == LOW) {
-      handleButtonPress();
-      // Simple debounce delay
-      vTaskDelay(10 / portTICK_PERIOD_MS);
+
+    if (digitalRead(SWITCH_PARAM_BUTTON) == LOW) {
+      // Switch to the next parameter
+      currentParam = (currentParam + 1) % 4; // Cycle through 0-3
+
+      switch (currentParam) {
+        case ATTACK:
+          Serial.println("Switched to Attack");
+          break;
+        case DECAY:
+          Serial.println("Switched to Decay");
+          break;
+        case SUSTAIN:
+          Serial.println("Switched to Sustain");
+          break;
+        case RELEASE:
+          Serial.println("Switched to Release");
+          break;
+      }
+
+      vTaskDelay(10 / portTICK_PERIOD_MS); // Debounce delay
 
       // Wait until button is released to prevent retriggering
-      while (digitalRead(BUTTON_PIN) == LOW) {
+      while (digitalRead(SWITCH_PARAM_BUTTON) == LOW) {
         vTaskDelay(10 / portTICK_PERIOD_MS);
       }
     }
 
-    sampleSource->m_envelope.noteOff(); // Reset magnitude when button is not pressed
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
+  }
+}
+void trigTask(void *parameter) {
+  pinMode(TRIG_BUTTON, INPUT); // Use INPUT (no internal pull-ups on GPIO34)
+
+  while (true) {
+    if (digitalRead(TRIG_BUTTON) == LOW) {
+      osc1->m_envelope.noteOn(); // Trigger the envelope
+
+      vTaskDelay(10 / portTICK_PERIOD_MS); // Debounce delay
+
+      // Wait until button is released to prevent retriggering
+      while (digitalRead(TRIG_BUTTON) == LOW) {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+      }
+    }
+
+    osc1->m_envelope.noteOff(); // Reset magnitude when button is not pressed
 
     vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
   }
 }
 
-void attackTask(void *parameter) {
+void potentiometerTask(void *parameter) {
+
+
+  int lastPotValue = -1; // Previous raw analog value
 
   while (true) {
+    int potValue = analogRead(POT_PIN);
 
-    float potValue = analogRead(POT_PIN); // Read the potentiometer value
-    float attackTime = map(potValue, 0, 4095, 0.001, 5); // Map to a range (0-1000 s)
-    sampleSource->m_envelope.setAttackTime(attackTime); // Set attack time in seconds
-    vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
+    // Only act if the pot actually changed
+    if (potValue != lastPotValue) { // Threshold to avoid noise
+      lastPotValue = potValue;
+
+      switch (currentParam) {
+        case ATTACK: {
+          double attackTime = mapExp(potValue, 0, 4095, 0.001, 5);
+          osc1->m_envelope.setAttackTime(attackTime);
+          Serial.printf("Attack Time: %f seconds\n", attackTime);
+          break;
+        }
+        case DECAY: {
+          double decayTime = mapExp(potValue, 0, 4095, 0.001, 5);
+          osc1->m_envelope.setDecayTime(decayTime);
+          Serial.printf("Decay Time: %f seconds\n", decayTime);
+          break;
+        }
+        case SUSTAIN: {
+          double sustainLevel = (double) potValue / 4095.0; // Normalize to 0-1 range)
+          osc1->m_envelope.setSustainLevel(sustainLevel);
+          Serial.printf("Sustain Level: %f\n", sustainLevel);
+          break;
+        }
+        case RELEASE: {
+          double releaseTime = mapExp(potValue, 0, 4095, 0.001, 5);
+          osc1->m_envelope.setReleaseTime(releaseTime);
+          Serial.printf("Release Time: %f seconds\n", releaseTime);
+          break;
+        }
+      }
+    }
+
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Adjust as needed
   }
-} 
+}
 
-// void ADSRTask(void *parameter) {
-//   while (true) {
-//     // Call the tick function of the ADSR envelope
-//     float deltaTime = 1.0f / sampleSource->sampleRate();
-//     sampleSource->m_envelope.tick(deltaTime);
-//     vTaskDelay(1 / portTICK_PERIOD_MS); // Adjust delay as needed
-//   }
-// }
+void switchWaveFormTask(void *parameter) {
+  pinMode(SWITCH_WAVEFORM_BUTTON, INPUT); // Use INPUT (no internal pull-ups on GPIO39)
+
+  while (true) {
+    if (digitalRead(SWITCH_WAVEFORM_BUTTON) == LOW) {
+      // Switch to the next waveform type
+      WaveType currentWaveType = osc1->getWaveType();
+      WaveType newWaveType = static_cast<WaveType>((static_cast<int>(currentWaveType) + 1) % 4);
+      osc1->setWaveType(newWaveType);
+
+      switch (newWaveType) {
+        case SINE:
+          Serial.println("Switched to Sine Wave");
+          break;
+        case SQUARE:
+          Serial.println("Switched to Square Wave");
+          break;
+        case TRIANGLE:
+          Serial.println("Switched to Triangle Wave");
+          break;
+        case SAWTOOTH:
+          Serial.println("Switched to Sawtooth Wave");
+          break;
+        default:
+          Serial.println("Unknown Waveform Type");
+          break;
+      }
+
+      vTaskDelay(10 / portTICK_PERIOD_MS); // Debounce delay
+
+      // Wait until button is released to prevent retriggering
+      while (digitalRead(SWITCH_WAVEFORM_BUTTON) == LOW) {
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+      }
+    }
+
+    vTaskDelay(10 / portTICK_PERIOD_MS); // Polling interval
+  }
+}
+
+void screenTask(void *parameter) {
+
+  float prevAttackTime = 0; // Previous attack time for line drawing
+  float prevDecayTime = 0; // Previous decay time for line drawing
+  float prevSustainLevel = 0; // Previous sustain level for line drawing
+  float prevReleaseTime = 0; // Previous release time for line drawing
+
+  while (true) {
+    Serial.println("Screen Task Running");
+
+    float attackTime = osc1->m_envelope.getAttackTime(); 
+    float decayTime = osc1->m_envelope.getDecayTime();
+    float sustainLevel = osc1->m_envelope.getSustainLevel();
+    float releaseTime = osc1->m_envelope.getReleaseTime();
+
+    // clear old line 
+    tft.drawLine(0, 240, prevAttackTime, 0, TFT_BLACK); 
+    tft.drawLine(prevAttackTime, 0, prevAttackTime + prevDecayTime, sustainLevel , TFT_BLACK);
+    // draw new line 
+    tft.drawLine(0, 240, attackTime, 0, TFT_GREEN);
+    tft.drawLine(attackTime, 0, attackTime + decayTime, 100, TFT_GREEN); 
+
+    prevAttackTime = attackTime; 
+    prevDecayTime = decayTime;
+
+    vTaskDelay(50 / portTICK_PERIOD_MS);
+  }
+}
+
+
 
 void setup()
 {
   Serial.begin(115200);
   Serial.println("Starting up");
 
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
+  pinMode(TRIG_BUTTON, INPUT_PULLUP);
 
   if (!SPIFFS.begin()) {
       Serial.println("Failed to mount SPIFFS");
@@ -82,41 +224,65 @@ void setup()
 
   Serial.println("Created sample source");
 
-  sampleSource = new WaveFormGenerator(40000, 400, 0);
-
-  // sampleSource = new WAVFileReader("/sample.wav");
+  osc1 = new WaveFormGenerator(40000, 400, 0);
 
   Serial.println("Starting I2S Output");
   output = new I2SOutput();
-  output->start(I2S_NUM_1, i2sPins, sampleSource);
+  output->start(I2S_NUM_1, i2sPins, osc1);
 
-    // Create the button task pinned to core 1
-    xTaskCreate(
-      buttonTask,        // Task function
-      "Button Task",     // Name of task
-      2048,              // Stack size
-      NULL,              // Parameters
-      1,                 // Priority
-      &ButtonTaskHandle // Task handle
-    );
+  tft.init();
+  tft.setRotation(1);
+  tft.fillScreen(TFT_BLACK);
 
-    // xTaskCreate(
-    //   ADSRTask,        // Task function
-    //   "ADSR Task",     // Name of task
-    //   2048,              // Stack size
-    //   NULL,              // Parameters
-    //   1,                 // Priority
-    //   &ADSRTaskHandle // Task handle
-    // );
+  // Create the button task pinned to core 1
+  xTaskCreate(
+    trigTask,        // Task function
+    "Trigger Task",     // Name of task
+    2048,              // Stack size
+    NULL,              // Parameters
+    1,                 // Priority
+    &trigTaskHandle // Task handle
+  );
 
-    xTaskCreate(
-      attackTask,        // Task function
-      "AttackTask",     // Name of task
-      1024,              // Stack size
-      NULL,              // Parameters
-      1,                 // Priority
-      &AttackTaskHandle // Task handle
-    );
+  xTaskCreatePinnedToCore(
+    potentiometerTask,        // Task function
+    "potentiometerTask",     // Name of task
+    2048,              // Stack size
+    NULL,              // Parameters
+    1,                 // Priority
+    &potentiometerTaskHandle, // Task handle
+    1
+  );
+
+  xTaskCreatePinnedToCore(
+    switchADSRTask,        // Task function
+    "switchADSRTask",     // Name of task
+    1024,              // Stack size
+    NULL,              // Parameters
+    1,                 // Priority
+    &switchADSRTaskHandle, // Task handle
+    1
+  );
+
+  xTaskCreatePinnedToCore(
+    switchWaveFormTask,        // Task function
+    "switchWaveFormTask",     // Name of task
+    1024,              // Stack size
+    NULL,              // Parameters
+    1,                 // Priority
+    &switchWaveformTaskHandle, // Task handle
+    1
+  );
+
+  xTaskCreatePinnedToCore(
+    screenTask,        // Task function
+    "screen task",     // Name of task
+    4096,              // Stack size
+    NULL,              // Parameters
+    1,                 // Priority
+    &screenTaskHandler, // Task handle
+    0
+  );
 
 }
 

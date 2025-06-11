@@ -6,7 +6,7 @@ WaveFormGenerator::WaveFormGenerator(int sample_rate, int frequency, float magni
     m_sample_rate = sample_rate;
     m_frequency = frequency;
     m_magnitude = 0.1; // currently magnitude is set by default i guess 
-    m_wave_type = SINE; // Default wave type
+    m_wave_type =  SINE;// Default wave type
     m_current_position = 0;
 }
 
@@ -49,6 +49,13 @@ float WaveFormGenerator::getFromWaveType(float phase)
 
         case TRIANGLE:
             value = 4.0f * fabs((phase/TWO_PI) - 0.5f) - 1.0f;
+            break;
+
+        case SAWTOOTH:
+            {
+                float normalized_phase = phase / M_TWOPI;
+                value = 2.0f * normalized_phase - 1.0f;
+            }
             break;
         default :
             value = 0.0f; // Default case
