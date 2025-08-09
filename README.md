@@ -1,1 +1,5 @@
-A handheld synthesizer with displays to visualize waveforms and envelopes, meant to be an interactive experience for amateurs to grasp the fundamentals of electronic music synthesis. 
+# Handheld Synthesizer 🎹✨  
+
+An interactive, portable synthesizer that **visualizes waveforms and envelopes in real-time**, making it easier for beginners to explore and understand the fundamentals of electronic music synthesis.  
+
+Designed to be **hands-on, educational, and fun** — this device bridges the gap between theory and play.  
